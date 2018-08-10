@@ -1,11 +1,10 @@
 """Server component of the Banter project."""
-
+import copy
+import logging
 import socket
 import sys
 import threading
-import logging
 import time
-import copy
 
 
 class Master():
