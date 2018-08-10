@@ -439,12 +439,7 @@ class Banter():
             time.sleep(self.MASTER_SEARCH_SLEEP)
 
 if __name__ == "__main__":
-    """Mainline.
-
-    Possible arguments include:
-    debug: enable debug logging
-    r: disabl
-    """
+    """Mainline."""
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--debug', default=False, help="Enable debug logging", action="store_true")
     parser.add_argument('-r', default=True, help="Don't add persistence", action="store_false")
