@@ -1,4 +1,4 @@
-Banter is a Proof of Concept (PoC) Remote Access Tool (RAT) developed to play around with various ideas and concepts.
+Banter is a Proof of Concept (PoC) Remote Access Trojan (RAT) developed to play around with various ideas and concepts.
 Key concepts investigated:
  - Automatic discovery and pairing with server by the client. Currently limited to the same network subnet.
  - Beaconing to avoid firewall
