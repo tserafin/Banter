@@ -1,3 +1,4 @@
+#!python3
 """Client component of the Banter project."""
 import argparse
 import io
@@ -46,7 +47,7 @@ class Banter():
         self.LAST_HEARD_LIMIT = 60
         # How many times to attempt a connection before aborting
         self.CONNECTION_ATTEMPT_LIMIT = 5
-        # Whether or persistence should be added on this run
+        # Whether persistence should be added on this run
         self.PERSIST = persist
 
         self.name = self.get_name()

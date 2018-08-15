@@ -1,3 +1,4 @@
+#!python3
 """Server component of the Banter project."""
 import copy
 import logging
