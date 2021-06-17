@@ -1,5 +1,5 @@
 # Banter
-A Proof of Concept (PoC) Remote Access Trojan (RAT) developed to play around with various ideas and concepts.
+A Proof of Concept (PoC) Remote Access Trojan (RAT) developed to **legally** play around and test various ideas and concepts. I assume no liability for its misuse.
 
 Banter was developed alongside the BackdoorPE (https://github.com/tserafin/BackdoorPE) tool with the end goal of infecting a legitimate Windows binary with the Banter client.
 
